@@ -41,6 +41,7 @@ class Board:
         self.grid_width = grid_width
         self.grid_height = grid_height
         self.moves = []
+        self.game_probs = {}
 
     def winner(self) -> int:
         winner, _, _ = self.check_board()
@@ -53,12 +54,7 @@ class Board:
         else:
             return None
     
-    def check_board(self, status: str="win"):
-        if status == "win":
-            status_values = [-3, 3]
-        else:
-            status_values = [-2, 2]
-
+    def check_board(self, status: str="won"):
         row_0 = self.grid[self.slice_positions[0]].reshape(-1)
         row_1 = self.grid[self.slice_positions[1]].reshape(-1)
         row_2 = self.grid[self.slice_positions[2]].reshape(-1)
@@ -67,20 +63,36 @@ class Board:
         col_2 = self.grid[self.slice_positions[5]].reshape(-1)
         dig_0 = self.grid.diagonal()
         dig_1 = np.diag(np.fliplr(self.grid))
-        for name_position, vector in [("r0", row_0), ("r1", row_1), ("r2", row_2), ("c0", col_0), ("c1", col_1), ("c2", col_2), ("d0", dig_0), ("d1", dig_1)]:
-            winner = sum(vector)
-            if winner in status_values:
-                return winner, vector, name_position
+        positions = [("r0", row_0), ("r1", row_1), ("r2", row_2), ("c0", col_0), ("c1", col_1), ("c2", col_2), ("d0", dig_0), ("d1", dig_1)]
+        if status == "won":
+            for name_position, vector in positions:
+                winner = sum(vector)
+                if winner in [-3, 3]:
+                    return winner, vector, name_position
+        else:
+            active_player = Player.X if len(self.moves) % 2 == 0 else Player.O
+            to_win = []
+            for name_position, vector in positions:
+                winner = sum(vector)
+                if winner == 2 and active_player == Player.O:
+                    return winner, vector, name_position
+                elif winner == -2 and active_player == Player.X:
+                    return winner, vector, name_position
+                else:
+                    to_win.append([winner, vector, name_position])
+            for winner, vector, name_position in to_win:
+                if winner in [-2 ,2]:
+                    return winner, vector, name_position
+
         return 0, -1, ""
         
-
-    def add_move(self, x, y, player):
+    def add_move(self, x: int, y: int, player: int):
         if self.grid[x, y] == 0:
             self.grid[x, y] = player
+            self.moves.append(f"{x}{y}")
             return True
         else:
             return False
-
 
     def set_grid(self):
         grid = np.array([
@@ -99,6 +111,41 @@ class Board:
         for row in self.grid:
             print("|" + "|".join([Player.to_str(e) for e in row]) + "|")
             print("+" + "-" * (self.grid_width * 2 - 1) + "+")
+        if len(self.game_probs) > 0:
+            print(f"Won: {self.game_probs['won']:.2f}%")
+            print(f"Lose: {self.game_probs['lose']:.2f}%")
+            print(f"Drew: {self.game_probs['drew']:.2f}%")
+
+    def calc_game_probability(self):
+        moves = [self.moves[:]]
+        complete_moves = []
+        while len(moves) > 0:
+            explore_move = moves.pop(0)
+            next_base_moves = only_block_move({}, explore_move, filter=False)
+            for next_move in next_base_moves:
+                board = moves_to_board(next_move)
+                if len(next_move) == 9 or board.winner() in [Player.X, Player.O]:
+                    complete_moves.append((board.moves, board.winner()))
+                else:
+                    moves.append(next_move)
+
+        won, lose = 0, 0
+        total_valid_moves = set([])
+        for moves in complete_moves:
+            if moves[1] == Player.X:
+                total_valid_moves.add(",".join(moves[0]))
+                won += 1
+            elif moves[1] == Player.U:
+                total_valid_moves.add(",".join(moves[0][:7]))
+            else:
+                total_valid_moves.add(",".join(moves[0]))
+                lose += 1
+        
+        total = len(total_valid_moves)
+        self.game_probs["won"] = (won / total) * 100
+        self.game_probs["lose"] = (lose / total) * 100
+        self.game_probs["drew"] = ((total - lose - won) / total) * 100
+        self.game_probs["total"] = total
 
 
 def get_grid_lines(board: Board):
@@ -184,7 +231,7 @@ def save_win_or_lose_moves(table: dict, input_filename: str, output_filename: st
                 base_moves = moves[:max_moves]
                 sts = get_sts(table, Player.O, base_moves)
                 if sts["draw"] == 0:
-                    base_moves_target = best_play_game(table, {}, moves=base_moves, print_board_on_terminal=False)
+                    base_moves_target = best_play_game({}, moves=base_moves, print_board_on_terminal=False)
                     table_moves.add(",".join(base_moves_target[:3] + [base_moves_target[-1]]))
             else:
                 break
@@ -235,7 +282,6 @@ def play():
 
 def moves_to_board(moves: list) -> Board:
     board = Board()
-    board.moves = moves
     for player_turn, move in enumerate(moves):
         i = int(move[0])
         j = int(move[1])
@@ -333,7 +379,7 @@ def play_sts(plays, move):
     return ramdom_choice
 
 
-def best_play_game(table: dict, plays, stop_move: int = 1, moves: list = [], print_board_on_terminal: bool = True) -> list:
+def best_play_game(plays, stop_move: int = 1, moves: list = [], print_board_on_terminal: bool = True) -> list:
     while True:
         active_player = Player.X if len(moves) % 2 == 0 else Player.O
         best_play = play_sts(plays, moves)
@@ -345,7 +391,8 @@ def best_play_game(table: dict, plays, stop_move: int = 1, moves: list = [], pri
         
         if best_play[0]["won"] == 0:
             moves.pop()
-            moves = only_block_move(table, moves)
+            all_moves = only_block_move({}, moves)
+            moves = all_moves[0]
         
         board = moves_to_board(moves)
         winner = board.winner()
@@ -356,7 +403,7 @@ def best_play_game(table: dict, plays, stop_move: int = 1, moves: list = [], pri
             return moves
 
 
-def only_block_move(table: dict, moves: list):
+def only_block_move(table: dict, moves: list, filter: bool = True) -> list:
     board = Board()
     block_move = moves[:]
     for player_turn, position in enumerate(moves):
@@ -364,7 +411,7 @@ def only_block_move(table: dict, moves: list):
         j = int(position[1])
         active_player = Player.X if player_turn % 2 == 0 else Player.O
         board.add_move(i, j, active_player)
-    winner_player, vector, name_position = board.check_board(status="to_win")
+    _, vector, name_position = board.check_board(status="to_win")
 
     if name_position == "":
         active_player = Player.X if len(moves) % 2 == 0 else Player.O
@@ -376,10 +423,15 @@ def only_block_move(table: dict, moves: list):
             if next_move[len(moves)] not in last_move:
                 posible_moves.append((sts, next_move[len(moves)]))
                 last_move.add(next_move[len(moves)])
-        
-        posible_moves = heapq.nlargest(2, posible_moves, key=lambda x: x[0]["won"])
-        posible_moves = choice(posible_moves)
-        block_move.append(posible_moves[1])
+        if filter is True:
+            posible_moves = heapq.nlargest(2, posible_moves, key=lambda x: x[0]["won"])
+            posible_moves = choice(posible_moves)
+            block_move.append(posible_moves[1])
+            all_block_moves = [block_move]
+        else:
+            all_block_moves = []
+            for move in posible_moves:
+                all_block_moves.append(block_move + [move[1]])
     else:
         i = 0
         while i <= 2:
@@ -396,7 +448,8 @@ def only_block_move(table: dict, moves: list):
                 block_move.append(index)
                 break
             i += 1
-    return block_move
+        all_block_moves = [block_move]
+    return all_block_moves
 
 
 def rotate(moves: list) -> int:
@@ -516,10 +569,10 @@ def read_results_killer_moves(filename: str, use_reflections: bool = True) -> di
     return plays
 
 
-def save_best_plays(table: dict, plays: dict, filename: str, number_games: int = 100):
+def save_best_plays(plays: dict, filename: str, number_games: int = 100):
     games = set([])
     for _ in range(number_games):
-        game = best_play_game(table, plays, stop_move=9, print_board_on_terminal=False)
+        game = best_play_game(plays, stop_move=9, print_board_on_terminal=False)
         game_str = ",".join(game)
         if game_str not in games:
             games.add(game_str)
@@ -550,18 +603,24 @@ def get_base_plays(filename: str):
     for moves_str in moves_set:
         reflected_moves_str = reflection_moves(moves_str.split(","))
         board = moves_to_board(reflected_moves_str.split(","))
+        board.calc_game_probability()
         grid_lines.append(get_grid_lines(board))
 
     grid_lines_chunks = []
-    chunk_size = 4
+    chunk_size = 2
     for i in range(0, len(grid_lines), chunk_size):
         grid_lines_chunks.append(grid_lines[i:i + chunk_size])
 
-    spc = " " * 10
+    spc = " " * 11
     for grid_lines_chunk in grid_lines_chunks:
         for i in range(len(grid_lines[0])):
-            print(f"{grid_lines_chunk[0][i]}{spc}{grid_lines_chunk[1][i]}{spc}{grid_lines_chunk[2][i]}{spc}{grid_lines_chunk[3][i]}")
-
+            if i >= 8:
+                spc = " " * 7
+            
+            print(f"{grid_lines_chunk[0][i]}{spc}{grid_lines_chunk[1][i]}")
+        print(" ")
+        spc = " " * 11
+        
 
 if __name__ == '__main__':
     config = configparser.ConfigParser()
@@ -599,8 +658,7 @@ if __name__ == '__main__':
                                input_filename=positions_no_symmetries_filename, 
                                output_filename=positions_win_or_lose_filename)
     elif args.run_best_plays:
-        table = moves_to_knowledge(positions_no_symmetries_filename, total_results=None)
         plays = read_results_killer_moves(positions_win_or_lose_filename, use_reflections=True)
-        save_best_plays(table, plays, game_patterns_filename, number_games=args.run_best_plays)
+        save_best_plays(plays, game_patterns_filename, number_games=args.run_best_plays)
     elif args.game_patterns:
         get_base_plays(game_patterns_filename)
