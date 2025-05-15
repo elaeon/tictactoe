@@ -18,7 +18,6 @@ python tictactoe.py --generate-all-moves
 In this step you can run a fixed number of n iterations (per default 100) of random games using 
 the best 6 patterns found in the previous step, and the results are saved in games_patterns.txt
 ```
-python tictactoe.py --run-best-plays 100
+python tictactoe.py --run-best-plays 200
 ```
-Note: Maybe you will need to run this command
-until you will get the four patterns that are showed with --game-pattern
+Note: If you get an error running --game-pattern again, then just increase a little bit the number of iterations.
