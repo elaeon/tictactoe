@@ -389,11 +389,10 @@ def best_play_game(plays, stop_move: int = 1, moves: list = [], print_board_on_t
                 moves.pop()
                 moves.append("11")
         
-        if best_play[0]["won"] == 0:
+        if best_play[0]["won"] == 0 and len(moves) > 3:
             moves.pop()
             all_moves = only_block_move({}, moves)
             moves = all_moves[0]
-        
         board = moves_to_board(moves)
         winner = board.winner()
         if print_board_on_terminal is True:
