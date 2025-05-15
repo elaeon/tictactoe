@@ -20,3 +20,5 @@ the best 6 patterns found in the previous step, and the results are saved in gam
 ```
 python tictactoe.py --run-best-plays 100
 ```
+After that, the data will be saved in game_patterns.txt (Note: Maybe you will need to run this command
+until you will get the four patterns that are showed with --game-pattern)
